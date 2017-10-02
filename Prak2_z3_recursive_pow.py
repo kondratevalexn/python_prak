@@ -4,13 +4,12 @@ def recursivePow(x, n):
         return 1
     if n == 1:
         return x
+    if n % 2 == 0:
+        r = recursivePow(x, n / 2)
+        return r * r
     else:
-        if n % 2 == 0:
-            r = recursivePow(x, n / 2)
-            return r * r
-        else:
-            r = recursivePow(x, (n - 1) / 2)
-            return x * r * r
+        r = recursivePow(x, (n - 1) / 2)
+        return x * r * r
 
 
 x = 2
