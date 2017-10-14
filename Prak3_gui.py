@@ -14,8 +14,7 @@ from matplotlib.figure import Figure
 from matplotlib.patches import Circle
 import matplotlib.pyplot as plt
 
-import random
-
+import xml.etree.cElementTree as ET
 
 def isConvertibleToFloat(value):
     try:
@@ -102,7 +101,7 @@ class MyTableWidget(QWidget):
         # list with circles
         self.circles = []
 
-        self.fileName = 'some_qml.qml'
+        self.fileName = 'some_qml.xml'
         # gui stuff
         self.layout = QVBoxLayout(self)
 
@@ -163,8 +162,10 @@ class MyTableWidget(QWidget):
         self.tab1.layout.addLayout(layout_open)
         layout_save.addWidget(pb_save_qml)
         layout_save.addWidget(self.tab1.le_saveFileName)
+        self.tab1.le_saveFileName.setText(self.fileName)
         layout_open.addWidget(pb_open_qml)
         layout_open.addWidget(self.tab1.le_openFileName)
+        self.tab1.le_openFileName.setText(self.fileName)
 
         # connecting slots
         pb_plus.clicked.connect(self.m.zoomIn)
@@ -214,20 +215,95 @@ class MyTableWidget(QWidget):
             self.curr_size = val
 
     def showSaveDialog(self):
+        self.save2Xml()
+        return
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
         self.fileName, _ = QFileDialog.getSaveFileName(self, "QFileDialog.getSaveFileName()", "", "All Files (*);;Text Files (*.txt)", options=options)
 
     def showOpenDialog(self):
+        self.openXml()
+        return
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
         self.fileName, _ = QFileDialog.getOpenFileName(self, "QFileDialog.getOpenFileName()", "", "All Files (*);;Python Files (*.py)", options=options)
+
+    def save2Xml(self):
+        root = ET.Element("data")
+        params = ET.SubElement(root, "parameters")
+        plot_size = ET.SubElement(params, "plot_size")
+        plot_size.text = str(self.m.axes.get_xlim())
+        color = ET.SubElement(params, "color")
+        color.text = self.color.name()
+        slider = ET.SubElement(params, "slider_data")
+
+        slider_min = ET.SubElement(slider, "min_value")
+        slider_min.text = str(self.slider.minimum())
+
+        slider_max = ET.SubElement(slider, "max_value")
+        slider_max.text = str(self.slider.maximum())
+
+        slider_value = ET.SubElement(slider, "value")
+        slider_value.text = str(self.slider.value())
+
+        circles = ET.SubElement(root, "circles")
+        for cir in self.circles:
+            circle = ET.SubElement(circles, "circle")
+            ET.SubElement(circle, "x").text = str(cir.x)
+            ET.SubElement(circle, "y").text = str(cir.y)
+            ET.SubElement(circle, "size").text = str(cir.size)
+            ET.SubElement(circle, "color").text = str(cir.color)
+
+        tree = ET.ElementTree(root)
+        tree.write(self.fileName)
+
+    def openXml(self):
+        print('1')
+        tree = ET.parse(self.fileName)
+        parameters = tree.find("parameters")
+        plot_size = parameters.find("plot_size")
+        spl = plot_size.text.split('(')[1].split(')')[0].split(',')
+        lim = (float(spl[0]), float(spl[1]))
+
+        color = parameters.find('color').text
+
+        slider = parameters.find('slider_data')
+        min_v = slider.find('min_value').text
+        max_v = slider.find('max_value').text
+        v = slider.find('value').text
+
+        self.m.axes.set_xlim(lim)
+        self.m.axes.set_ylim(lim)
+        self.color.setNamedColor(color)
+        self.slider.setMinimum(int(min_v))
+        self.slider.setMaximum(int(max_v))
+        self.slider.setValue(int(v))
+
+        self.circles.clear()
+        circles_root = tree.find("circles")
+        circles = circles_root.getiterator("circle")
+        for c in circles:
+            x = c.find("x").text
+            y = c.find("y").text
+            size = c.find("size").text
+            color = c.find("color").text
+            newCircle = customCircle(float(x), float(y), float(size), color)
+            self.circles.append(newCircle)
+            self.m.axes.add_artist(newCircle)
+        self.m.draw()
+
+
+
 
 
 class customCircle(Circle):
     def __init__(self, x, y, size, color):
         Circle.__init__(self, (x, y), size)
         self.set_color(color)
+        self.x = x
+        self.y = y
+        self.size = size
+        self.color = color
 
 
 if __name__ == '__main__':
