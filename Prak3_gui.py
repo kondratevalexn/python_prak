@@ -258,7 +258,6 @@ class MyTableWidget(QWidget):
         tree.write(self.fileName)
 
     def openXml(self):
-        print('1')
         tree = ET.parse(self.fileName)
         parameters = tree.find("parameters")
         plot_size = parameters.find("plot_size")
@@ -272,6 +271,7 @@ class MyTableWidget(QWidget):
         max_v = slider.find('max_value').text
         v = slider.find('value').text
 
+        self.m.axes.clear()
         self.m.axes.set_xlim(lim)
         self.m.axes.set_ylim(lim)
         self.color.setNamedColor(color)
