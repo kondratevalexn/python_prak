@@ -5,8 +5,9 @@ from numpy import arange, sin, pi
 import numpy as np
 
 from PyQt5.QtWidgets import QApplication, QMainWindow, QTextEdit, QVBoxLayout, QSizePolicy, QMessageBox, QWidget, QPushButton, QTabWidget, \
-    QColorDialog, QSlider, QHBoxLayout, QLabel, QLineEdit, QFileDialog
+    QColorDialog, QSlider, QHBoxLayout, QLabel, QLineEdit, QFileDialog, QRadioButton, QButtonGroup, QGroupBox
 from PyQt5.QtGui import QTextLine, QColor
+from PyQt5 import QtGui
 from PyQt5.QtCore import Qt
 
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -14,7 +15,12 @@ from matplotlib.figure import Figure
 from matplotlib.patches import Circle
 import matplotlib.pyplot as plt
 
+
+
 import xml.etree.cElementTree as ET
+
+from sphinx.ext.graphviz import graphviz
+
 
 def isConvertibleToFloat(value):
     try:
@@ -137,6 +143,7 @@ class MyTableWidget(QWidget):
         pb_save_qml = Button('Save to xml', self.tab1)
         pb_open_qml = Button('Open xml', self.tab1)
 
+        #tab Edit
         # Adding widgets to layout
         self.tab1.layout.addWidget(self.m)
         self.tab1.layout_coords = QHBoxLayout()
@@ -183,6 +190,29 @@ class MyTableWidget(QWidget):
         # Add tabs to widget
         self.layout.addWidget(self.tabs)
         self.setLayout(self.layout)
+
+        #tab Model
+        self.tab2.layout = QVBoxLayout(self)
+        self.tab2.setLayout(self.tab2.layout)
+        buttonGroup = QButtonGroup(self)
+        rb_scipy = QRadioButton('scipy')
+        rb_verlet = QRadioButton('verlet')
+        rb_verletThreading = QRadioButton('verlet-threading')
+        rb_verletMultiprocessing = QRadioButton('verlet-multiprocessing')
+        rb_verletCython = QRadioButton('verlet-cython')
+        rb_verletOpenCL = QRadioButton('verlet-opencl')
+        rb_verlet.setChecked(True);
+        vbox = QVBoxLayout()
+        vbox.addWidget(rb_scipy)
+        vbox.addWidget(rb_verlet)
+        vbox.addWidget(rb_verletThreading)
+        vbox.addWidget(rb_verletCython)
+        vbox.addWidget(rb_verletMultiprocessing)
+        vbox.addWidget(rb_verletOpenCL)
+        groupBox = QGroupBox()
+        groupBox.setTitle('Select mode')
+        groupBox.setLayout(vbox)
+        self.tab2.layout.addWidget(groupBox)
 
     def drawCircle(self, event):
         if (event.inaxes):
