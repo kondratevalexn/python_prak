@@ -3,6 +3,7 @@ import scipy as sp
 from scipy.constants import G
 
 import matplotlib.pyplot as plt
+import math
 
 
 # class representing moving object. Mass is scalar, r,v are vectors (numpy arrays of 3)
@@ -15,13 +16,13 @@ class bodyObject():
 
     # returns gravitational acceleration towards object obj
     def computeAccelerationTowardObject(self, obj):
-        dist3 = np.dot(obj.r - self.r, obj.r - self.r)
+        dist3 = math.sqrt(np.dot(obj.r - self.r, obj.r - self.r))
         dist3 = dist3 * dist3 * dist3
         return G * obj.mass * (obj.r - self.r) / dist3
 
     def getAcceleration(self, mass_j, r_j):
-        dist3 = np.dot(r_j - self.r, r_j - self.r)
-        dist3 = dist3 * dist3*dist3
+        dist3 = math.sqrt(np.dot(r_j - self.r, r_j - self.r))
+        dist3 = dist3 * dist3 * dist3
         return G * mass_j * (r_j - self.r) / dist3
 
     def addCoordTupleToList(self, a):
@@ -30,8 +31,8 @@ class bodyObject():
 
 def verletIteration(objectsList, dt, t):
     # initialization of object parameters should be in the objects constructor
-    new_r = np.zeros((len(objectsList),3))
-    new_v = np.zeros((len(objectsList),3))
+    new_r = np.zeros((len(objectsList), 3))
+    new_v = np.zeros((len(objectsList), 3))
 
     # update r in all objects
     for i in range(len(objectsList)):
@@ -46,12 +47,13 @@ def verletIteration(objectsList, dt, t):
                 obj_j = objectsList[j]
                 a_n += obj.computeAccelerationTowardObject(obj_j)
 
-        print('a')
-        print(a_n)
-        print('r')
-        print(x_n)
-        print('v')
-        print(v_n)
+        if i == 3:
+            print('a')
+            print(a_n)
+            print('r')
+            print(x_n)
+            print('v')
+            print(v_n)
 
         x_n1 = x_n + v_n * dt + a_n * dt * dt / 2
         obj.a = a_n
@@ -78,20 +80,30 @@ def verletIteration(objectsList, dt, t):
         obj.v = v_n1
 
 
-
-iters = 1046
+iters = 300
 objCount = 2
 xdata = np.zeros((objCount, iters))
 ydata = np.zeros((objCount, iters))
 
-sun = bodyObject(1 * 10 ** 12, np.zeros(3), np.array([0, 0, 0]))
-earth = bodyObject(1, np.array([1, 0, 0]), np.array([0, 1., 0]))
+m_sun = 1.98892 * (10 ** 30)
+m_earth = 5.972 * (10 ** 24)
+
+r_earth_sun = 1.496 * (10 ** 11)
+
+v_earth_sun = 29.783 * 1000
+
+sun = bodyObject(m_sun, np.zeros(3), np.array([0, 0, 0]))
+earth = bodyObject(m_earth, np.array([r_earth_sun, 0, 0]), np.array([0, v_earth_sun, 0]))
+
+#sun = bodyObject(10**12, np.zeros(3), np.array([0, 0, 0]))
+#earth = bodyObject(1, np.array([1, 0, 0]), np.array([0, 1, 0]))
+
 objList = [sun, earth]
 
 axes = plt.subplot(111)
 
 t = 0
-dt = 0.0001  # I don't know about dt, mb it should be normalized somehow
+dt = 3600*24  # I don't know about dt, mb it should be normalized somehow
 for i in range(iters):
     verletIteration(objList, dt, t)
     t += 1
