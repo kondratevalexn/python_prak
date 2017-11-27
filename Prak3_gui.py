@@ -14,8 +14,10 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.patches import Circle
 import matplotlib.pyplot as plt
+import math
 
-
+from verlet import bodyObject
+from verlet import verletIteration
 
 import xml.etree.cElementTree as ET
 
@@ -142,8 +144,10 @@ class MyTableWidget(QWidget):
         self.slider.setRange(1.0, 100.0)
         pb_save_qml = Button('Save to xml', self.tab1)
         pb_open_qml = Button('Open xml', self.tab1)
+        pb_draw_system = Button('Draw Sun system', self.tab1)
+        pb_start_animation =Button('Start animation', self.tab1)
 
-        #tab Edit
+        # tab Edit
         # Adding widgets to layout
         self.tab1.layout.addWidget(self.m)
         self.tab1.layout_coords = QHBoxLayout()
@@ -173,6 +177,8 @@ class MyTableWidget(QWidget):
         layout_open.addWidget(pb_open_qml)
         layout_open.addWidget(self.tab1.le_openFileName)
         self.tab1.le_openFileName.setText(self.fileName)
+        self.tab1.layout.addWidget(pb_draw_system)
+        self.tab1.layout.addWidget(pb_start_animation)
 
         # connecting slots
         pb_plus.clicked.connect(self.m.zoomIn)
@@ -180,10 +186,12 @@ class MyTableWidget(QWidget):
         pb_choose_color.clicked.connect(self.showColorPicker)
         pb_save_qml.clicked.connect(self.showSaveDialog)
         pb_open_qml.clicked.connect(self.showOpenDialog)
+        pb_draw_system.clicked.connect(self.drawSunEarthMoonSystem)
+        pb_start_animation.clicked.connect(self.startAnimation)
         self.slider.valueChanged.connect(self.sliderValueChanged)
         self.le_slider.textChanged.connect(self.textSliderValueChanged)
         self.m.mpl_connect('motion_notify_event', self.changeCoords)
-        self.m.mpl_connect('button_press_event', self.drawCircle)
+        self.m.mpl_connect('button_press_event', self.drawCircleMouseClick)
 
         self.slider.setValue(10)
 
@@ -191,17 +199,17 @@ class MyTableWidget(QWidget):
         self.layout.addWidget(self.tabs)
         self.setLayout(self.layout)
 
-        #tab Model
+        # tab Model
         self.tab2.layout = QVBoxLayout(self)
         self.tab2.setLayout(self.tab2.layout)
-        buttonGroup = QButtonGroup(self)
+
         rb_scipy = QRadioButton('scipy')
         rb_verlet = QRadioButton('verlet')
         rb_verletThreading = QRadioButton('verlet-threading')
         rb_verletMultiprocessing = QRadioButton('verlet-multiprocessing')
         rb_verletCython = QRadioButton('verlet-cython')
         rb_verletOpenCL = QRadioButton('verlet-opencl')
-        rb_verlet.setChecked(True);
+        rb_verlet.setChecked(True)
         vbox = QVBoxLayout()
         vbox.addWidget(rb_scipy)
         vbox.addWidget(rb_verlet)
@@ -213,13 +221,55 @@ class MyTableWidget(QWidget):
         groupBox.setTitle('Select mode')
         groupBox.setLayout(vbox)
         self.tab2.layout.addWidget(groupBox)
+        # self.drawSunEarthMoonSystem()
 
-    def drawCircle(self, event):
+    def drawCircleMouseClick(self, event):
         if (event.inaxes):
             circle = customCircle(self.curr_x, self.curr_y, self.curr_size, self.color.name())
             self.m.axes.add_artist(circle)
             self.circles.append(circle)
             self.m.draw()
+
+    def drawCircle(self, customCircle):
+        self.m.axes.add_artist(customCircle)
+        self.m.draw()
+
+    def drawCirclesList(self):
+        for circ in self.circles:
+            self.drawCircle(circ)
+
+    def scaleCircles(self, scale):
+        for circ in self.circles:
+            circ.scaleCircle(scale)
+
+    def scaleCirclesRadius(self, scale):
+        for circ in self.circles:
+            circ.size *= scale
+
+    def drawSunEarthMoonSystem(self):  # all velocities are [0,v]
+        self.circles.clear()
+        self.m.axes.clear()
+        r_earth_sun = 1.496 * (10 ** 11)
+        r_moon_earth = 3.844 * (10 ** 8)
+        sun = getSunCircle(0, 0)
+        earth = getEarthCircle(r_earth_sun, 0)
+        moon = getMoonCircle(r_earth_sun + r_moon_earth, 0)
+        self.circles.append(sun)
+        self.circles.append(earth)
+        self.circles.append(moon)
+        self.scaleCircles(1e-9)
+        self.scaleCirclesRadius(0.5)
+        self.drawCirclesList()
+
+    def startAnimation(self):
+        t = 0
+        iters = 1
+        dt = 3600 * 24 * 1e-9  # I don't know about dt, mb it should be normalized somehow
+        for i in range(iters):
+            verletIteration(self.circles, dt, t)
+            self.m.axes.clean()
+            #self.drawCirclesList()
+            t += 1
 
     def changeCoords(self, event):
         if (event.inaxes):
@@ -249,14 +299,16 @@ class MyTableWidget(QWidget):
         return
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
-        self.fileName, _ = QFileDialog.getSaveFileName(self, "QFileDialog.getSaveFileName()", "", "All Files (*);;Text Files (*.txt)", options=options)
+        self.fileName, _ = QFileDialog.getSaveFileName(self, "QFileDialog.getSaveFileName()", "", "All Files (*);;Text Files (*.txt)",
+                                                       options=options)
 
     def showOpenDialog(self):
         self.openXml()
         return
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
-        self.fileName, _ = QFileDialog.getOpenFileName(self, "QFileDialog.getOpenFileName()", "", "All Files (*);;Python Files (*.py)", options=options)
+        self.fileName, _ = QFileDialog.getOpenFileName(self, "QFileDialog.getOpenFileName()", "", "All Files (*);;Python Files (*.py)",
+                                                       options=options)
 
     def save2Xml(self):
         root = ET.Element("data")
@@ -323,17 +375,62 @@ class MyTableWidget(QWidget):
         self.m.draw()
 
 
-
-
-
-class customCircle(Circle):
-    def __init__(self, x, y, size, color):
+class customCircle(Circle, bodyObject):
+    def __init__(self, x, y, size, color, speed_v=0):
+        mass = math.exp(size)
         Circle.__init__(self, (x, y), size)
+        bodyObject.__init__(self, mass, np.array([x, y]), speed_v)
         self.set_color(color)
         self.x = x
         self.y = y
         self.size = size
         self.color = color
+
+    def setMassAndSizeByMass(self, mass):
+        self.mass = mass
+        self.size = math.log10(mass)
+
+    def scaleCircle(self, scale):
+        # if we decrease r in n than we should decrease mass in n^2 since acceleration is ~m/r/r
+        # this function should be called for all objects in list before the iteration starts (because all radiuses should be changed by scale)
+        self.mass *= scale * scale
+        self.x *= scale
+        self.y *= scale
+        self.r = np.array([self.x, self.y])
+        self.v *= scale
+
+
+def getSunCircle(x, y):
+    sun = customCircle(x, y, 10, 'yellow', 0)
+    m_sun = 1.98892 * (10 ** 30)
+    sun.setMassAndSizeByMass(m_sun)
+    return sun
+
+
+def getEarthCircle(x, y):
+    v_earth_sun = np.array([0, 29.783 * 1000])  # m/sec
+    earth = customCircle(x, y, 10, 'green', v_earth_sun)
+    m_earth = 5.972 * (10 ** 24)  # kg
+    earth.setMassAndSizeByMass(m_earth)
+    # r_earth_sun = 1.496 * (10 ** 11)
+    return earth
+
+
+def getMoonCircle(x, y):
+    v_moon_earth = np.array([0, 1.023 * 1000])
+    v_moon_sun = np.array([0, 29.783 * 1000]) + v_moon_earth  # equals to v_earth_sun + v_moon_earth, same velocity direction as v_earth_sun
+    moon = customCircle(x, y, 10, 'gray', v_moon_sun)
+    m_moon = 7.3477 * (10 ** 22)
+    moon.setMassAndSizeByMass(m_moon)
+    return moon
+
+
+def getMercuryCircle(x, y):
+    v_mercury_sun = np.array([0, 47.36 * 1000])
+    mercury = customCircle(x, y, 10, 'red', v_mercury_sun)
+    m_mercury = 3.33022 * (10 ** 23)
+    mercury.setMassAndSizeByMass(m_mercury)
+    return mercury
 
 
 if __name__ == '__main__':
