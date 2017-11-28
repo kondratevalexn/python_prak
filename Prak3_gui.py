@@ -1,4 +1,5 @@
 import sys
+import time
 
 from numpy import arange, sin, pi
 
@@ -13,6 +14,8 @@ from PyQt5.QtCore import Qt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.patches import Circle
+import matplotlib.animation as animation
+
 import matplotlib.pyplot as plt
 import math
 
@@ -61,13 +64,13 @@ class App(QMainWindow):
 
 class PlotCanvas(FigureCanvas):
     def __init__(self, parent=None, width=5, height=5, dpi=100):
-        fig = Figure(figsize=(width, height), dpi=dpi)
-        self.axes = fig.add_subplot(111)
+        self.fig = Figure(figsize=(width, height), dpi=dpi)
+        self.axes = self.fig.add_subplot(111)
 
         self.axes.set_xlim([-100, 100])
         self.axes.set_ylim([-100, 100])
 
-        FigureCanvas.__init__(self, fig)
+        FigureCanvas.__init__(self, self.fig)
         self.setParent(parent)
 
         FigureCanvas.setSizePolicy(self,
@@ -78,6 +81,9 @@ class PlotCanvas(FigureCanvas):
 
     def plot(self):
         self.draw()
+
+    def getFig(self):
+        return self.fig
 
     def zoomIn(self):
         xlim = self.axes.get_xlim()
@@ -108,6 +114,8 @@ class MyTableWidget(QWidget):
 
         # list with circles
         self.circles = []
+        # artist for the plot
+        self.artists = []
 
         self.fileName = 'some_qml.xml'
         # gui stuff
@@ -145,7 +153,7 @@ class MyTableWidget(QWidget):
         pb_save_qml = Button('Save to xml', self.tab1)
         pb_open_qml = Button('Open xml', self.tab1)
         pb_draw_system = Button('Draw Sun system', self.tab1)
-        pb_start_animation =Button('Start animation', self.tab1)
+        pb_start_animation = Button('Start animation', self.tab1)
 
         # tab Edit
         # Adding widgets to layout
@@ -231,12 +239,14 @@ class MyTableWidget(QWidget):
             self.m.draw()
 
     def drawCircle(self, customCircle):
-        self.m.axes.add_artist(customCircle)
+        a = self.m.axes.add_artist(customCircle)
+        self.artists.append(a)
         self.m.draw()
 
     def drawCirclesList(self):
         for circ in self.circles:
-            self.drawCircle(circ)
+            self.m.axes.add_artist(circ)
+        self.m.draw()
 
     def scaleCircles(self, scale):
         for circ in self.circles:
@@ -244,31 +254,41 @@ class MyTableWidget(QWidget):
 
     def scaleCirclesRadius(self, scale):
         for circ in self.circles:
-            circ.size *= scale
+            circ.radius *= scale
+
+    def setCentersAfterIteration(self):
+        for circ in self.circles:
+            circ.setCenterFromRadiusVector()
 
     def drawSunEarthMoonSystem(self):  # all velocities are [0,v]
         self.circles.clear()
         self.m.axes.clear()
         r_earth_sun = 1.496 * (10 ** 11)
         r_moon_earth = 3.844 * (10 ** 8)
+        r_moon_sun = r_earth_sun + r_moon_earth
         sun = getSunCircle(0, 0)
         earth = getEarthCircle(r_earth_sun, 0)
-        moon = getMoonCircle(r_earth_sun + r_moon_earth, 0)
+        moon = getMoonCircle(r_moon_sun, 0)
         self.circles.append(sun)
         self.circles.append(earth)
         self.circles.append(moon)
         self.scaleCircles(1e-9)
         self.scaleCirclesRadius(0.5)
+        print(self.circles[1].x)
         self.drawCirclesList()
 
     def startAnimation(self):
         t = 0
-        iters = 1
-        dt = 3600 * 24 * 1e-9  # I don't know about dt, mb it should be normalized somehow
+        iters = 20
+        dt = 3600 * 24 *1e-4 # I don't know about dt, mb it should be normalized somehow
         for i in range(iters):
+            print(self.circles[1].r)
+            print(self.circles[1].v)
             verletIteration(self.circles, dt, t)
-            self.m.axes.clean()
-            #self.drawCirclesList()
+            self.setCentersAfterIteration()
+            self.m.axes.clear()
+            self.m.draw()
+            self.drawCirclesList()
             t += 1
 
     def changeCoords(self, event):
@@ -333,7 +353,7 @@ class MyTableWidget(QWidget):
             circle = ET.SubElement(circles, "circle")
             ET.SubElement(circle, "x").text = str(cir.x)
             ET.SubElement(circle, "y").text = str(cir.y)
-            ET.SubElement(circle, "size").text = str(cir.size)
+            ET.SubElement(circle, "size").text = str(cir.radius)
             ET.SubElement(circle, "color").text = str(cir.color)
 
         tree = ET.ElementTree(root)
@@ -367,28 +387,30 @@ class MyTableWidget(QWidget):
         for c in circles:
             x = c.find("x").text
             y = c.find("y").text
-            size = c.find("size").text
+            radius = c.find("size").text
             color = c.find("color").text
-            newCircle = customCircle(float(x), float(y), float(size), color)
+            newCircle = customCircle(float(x), float(y), float(radius), color)
             self.circles.append(newCircle)
             self.m.axes.add_artist(newCircle)
         self.m.draw()
 
 
 class customCircle(Circle, bodyObject):
-    def __init__(self, x, y, size, color, speed_v=0):
-        mass = math.exp(size)
-        Circle.__init__(self, (x, y), size)
+    def __init__(self, x, y, radius, color, speed_v=np.zeros(2)):
+        mass = math.exp(radius)
+        Circle.__init__(self, (x, y), radius)
         bodyObject.__init__(self, mass, np.array([x, y]), speed_v)
         self.set_color(color)
         self.x = x
         self.y = y
-        self.size = size
         self.color = color
 
-    def setMassAndSizeByMass(self, mass):
+    def setCenterFromRadiusVector(self):
+        self.center = (self.r[0], self.r[1])
+
+    def setMassAndRadiusByMass(self, mass):
         self.mass = mass
-        self.size = math.log10(mass)
+        self.radius = math.log10(mass)
 
     def scaleCircle(self, scale):
         # if we decrease r in n than we should decrease mass in n^2 since acceleration is ~m/r/r
@@ -397,13 +419,15 @@ class customCircle(Circle, bodyObject):
         self.x *= scale
         self.y *= scale
         self.r = np.array([self.x, self.y])
+        self.center = (self.x, self.y)
+        self.set_radius(self.radius)
         self.v *= scale
 
 
 def getSunCircle(x, y):
-    sun = customCircle(x, y, 10, 'yellow', 0)
+    sun = customCircle(x, y, 10, 'yellow', np.zeros(2))
     m_sun = 1.98892 * (10 ** 30)
-    sun.setMassAndSizeByMass(m_sun)
+    sun.setMassAndRadiusByMass(m_sun)
     return sun
 
 
@@ -411,7 +435,7 @@ def getEarthCircle(x, y):
     v_earth_sun = np.array([0, 29.783 * 1000])  # m/sec
     earth = customCircle(x, y, 10, 'green', v_earth_sun)
     m_earth = 5.972 * (10 ** 24)  # kg
-    earth.setMassAndSizeByMass(m_earth)
+    earth.setMassAndRadiusByMass(m_earth)
     # r_earth_sun = 1.496 * (10 ** 11)
     return earth
 
@@ -421,7 +445,7 @@ def getMoonCircle(x, y):
     v_moon_sun = np.array([0, 29.783 * 1000]) + v_moon_earth  # equals to v_earth_sun + v_moon_earth, same velocity direction as v_earth_sun
     moon = customCircle(x, y, 10, 'gray', v_moon_sun)
     m_moon = 7.3477 * (10 ** 22)
-    moon.setMassAndSizeByMass(m_moon)
+    moon.setMassAndRadiusByMass(m_moon)
     return moon
 
 
@@ -429,7 +453,7 @@ def getMercuryCircle(x, y):
     v_mercury_sun = np.array([0, 47.36 * 1000])
     mercury = customCircle(x, y, 10, 'red', v_mercury_sun)
     m_mercury = 3.33022 * (10 ** 23)
-    mercury.setMassAndSizeByMass(m_mercury)
+    mercury.setMassAndRadiusByMass(m_mercury)
     return mercury
 
 
